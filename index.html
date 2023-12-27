@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.0/jquery.min.js"></script>
+  <link rel="stylesheet" href="css/busNum.css">
+  <title>國光客運_車號</title>
+</head>
+
+<body>
+  <div id="main">
+    <div class="middle">
+      <div class="right">
+        <div class="top">
+          <img src="img/infoBg.svg" alt="">
+        </div>
+        <p>
+          <input type="text" class="busNm" placeholder="請輸入車號" placeholder="請輸入車號"
+            oninput="value=value.replace(/[^\d]/g,'')">
+        </p>
+        <div class="pop"></div>
+        <p>
+          <input type="text" class="stopName" placeholder="請輸入站名" value="華山文創園區">
+        </p>
+        <div class="btn purple">登入</div>
+      </div>
+    </div>
+  </div>
+  <script>
+
+    //RWD
+    let $W = $(window).width();
+    let $H = $(window).height();
+
+    if ($H < 420 && $W < 1000) {
+
+      $('body').addClass('phone');
+    }
+
+    let busNm = '';
+    let direction = '';
+    let startStopName;
+    let endStopName;
+
+
+    $('.busNm').focusout(function () {
+      busNm = $(this).val();
+      $('.right .pop').addClass('focus');
+      fetchAPI();
+    });
+
+   function fetchAPI() {
+      if (busNm !== '') {
+        $.ajax({
+          url: 'https://tdx.transportdata.tw/api/basic/v2/Bus/StopOfRoute/InterCity/' + busNm + '?%24&%24format=JSON',
+          method: "GET",
+          datatype: "json",
+          success: function (address) {
+
+            let goNum = address[0].Stops.length;
+            let names = [];
+            let uniqueNames = [];
+
+
+            for (let i = 0; i < address.length; i++) {
+              names.push(address[i].SubRouteName.Zh_tw);
+            }
+            //uniqueNames＝所有支線
+            $.each(names, function (i, el) {
+              if ($.inArray(el, uniqueNames) === -1) uniqueNames.push(el);
+            });
+
+            $.each(uniqueNames, function (i, el) {
+              $('.pop').append('<div class="wayWP"><span>' + uniqueNames[i] + '</span></div>');
+            });
+
+            //抓支線的起訖
+            for (let num = 0; num < uniqueNames.length; num++) {
+              for (let i = 0; i < address.length; i++) {
+                let start, last, end;
+                if (address[i].SubRouteName.Zh_tw == uniqueNames[num]) {
+                
+                  start = address[i].Stops[0].StopName.Zh_tw;
+                  let stopNum = address[i].Stops.length
+                  $('.pop div').eq(num).append('<p class="flex way"><input type="radio" name="direction" value="' + i + '"/><a class="start" position="' + address[i].Stops[0].StopPosition.PositionLat + ',' + address[i].Stops[0].StopPosition.PositionLon + '">' + start + '</a>→<a class="end" position="' + address[i].Stops[stopNum - 1].StopPosition.PositionLat + ',' + address[i].Stops[stopNum - 1].StopPosition.PositionLon + '">'  + address[i].Stops[stopNum - 1].StopName.Zh_tw + '</a></p>');
+                }
+              }
+            }
+
+            //選支線 秀起訖
+            $('.right .pop .wayWP span').click(function () {
+              $(this).siblings('.flex.way').css('display', 'flex');
+              $(this).parents('.right .pop .wayWP').addClass('checked');
+              $(this).parents('.right .pop .wayWP').siblings('.right .pop .wayWP').removeClass('checked');
+              $(this).parents('.right .pop .wayWP').siblings('.right .pop .wayWP').find('.flex.way').hide();
+            });
+
+          }
+
+        });
+      }
+    }
+
+    $('.btn').click(function () {
+      if ($('.busNm').val() !== '' && $('.stopName').val() !== '' && $('input[type="radio"]:checked').length > 0) {
+        let n = $('.busNm').val();
+        let stopNow = $('.stopName').val();
+        let startName = $('.right .pop .wayWP.checked input[type="radio"]:checked').siblings('.start').text();
+        let endName = $('.right .pop .wayWP.checked input[type="radio"]:checked').siblings('.end').text();
+        let startPosition = $('.right .pop .wayWP.checked input[type="radio"]:checked').siblings('.start').attr('position');
+        let endPosition = $('.right .pop .wayWP.checked input[type="radio"]:checked').siblings('.end').attr('position');
+        let Num = { name: n };
+        let start = { name: startName,position: startPosition};
+        let end = { name: endName,position: endPosition };
+        let stopD = $('input[type="radio"]:checked').val() % 2;
+        let d = { direction: stopD };
+       let sN= {name :stopNow};
+
+        localStorage.setItem("number", JSON.stringify(Num));
+        localStorage.setItem("startName", JSON.stringify(start));
+        localStorage.setItem("endName", JSON.stringify(end));
+        localStorage.setItem("direction", JSON.stringify(d));
+        localStorage.setItem("stopName", JSON.stringify(sN));
+
+        window.location = "http://localhost:8888/23.12.27_kingbus/API.html";
+      } else if ($('.busNm').val() == '') {
+        alert('請填寫 車號');
+      } else if ($('.stopName').val() == '') {
+        alert('請填寫 站名');
+      } else if (!$('input[type="radio"]:checked').length > 0) {
+        alert('請選擇『去程』 或 『回程』 ');
+      }
+    });
+
+  </script>
+</body>
+
+</html>

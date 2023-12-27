@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.0/jquery.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Atomic+Age&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/API.css">
+    <title>國光客運</title>
+</head>
+
+<body id="fullScreen">
+    <header>
+        <div class="left">
+            <div class="carNum">
+                <img src="img/bus.svg" alt="">
+                <div class="num"></div>
+            </div>
+            <div class="carStatus"></div>
+        </div>
+        <span class="flex busNum"></span>
+        <div class="right">
+            <div class="time"></div>
+            <div class="date">
+                <span class="year"></span><span class="month"></span><span class="day"></span>
+            </div>
+        </div>
+    </header>
+    <div id="main">
+        <video src="AD.mp4" controls></video>
+        <div class="side">
+            <div class="item">
+                <div class="content">
+                    <div class="top">
+                        <div class="temperature now"></div>
+                        <img src="" alt="" class="img now">
+                    </div>
+                    <div class="down">
+                        <div class="air">空汙</div>
+                        <div class="text">53</div>
+                    </div>
+                </div>
+                <div class="place now"></div>
+            </div>
+            <div class="item">
+                <div class="content">
+                    <div class="top">
+                        <div class="temperature end"></div>
+                        <img src="" alt="" class="img end">
+                    </div>
+                    <div class="down">
+                        <div class="air">空汙</div>
+                        <div class="text">51</div>
+                    </div>
+                </div>
+                <div class="place end"></div>
+            </div>
+        </div>
+    </div>
+    <div class="data"></div>
+    <div id="accesstoken"></div>
+    <script>
+        //RWD
+        let $W = $(window).width();
+        let $H = $(window).height();
+
+        if ($H < 420 && $W < 1000) {
+            $('header .left, header .right,.busNum,.side,#main').addClass('phone');
+        }
+
+        //full screen
+        const videoElement = document.getElementById("fullScreen");
+        function toggleFullScreen() {
+            if (!document.mozFullScreen && !document.webkitFullScreen) {
+                if (videoElement.mozRequestFullScreen) {
+                    videoElement.mozRequestFullScreen();
+                } else {
+                    videoElement.webkitRequestFullScreen(Element.ALLOW_KEYBOARD_INPUT);
+                }
+            } else {
+                if (document.mozCancelFullScreen) {
+                    document.mozCancelFullScreen();
+                } else {
+                    document.webkitCancelFullScreen();
+                }
+            }
+        }
+
+        document.addEventListener("keydown", function (e) {
+            if (e.keyCode == 32) {
+                toggleFullScreen();
+            }
+        }, false);
+
+
+        let keyboardEvent = new KeyboardEvent("keydown", {
+            key: " ",
+            keyCode: 32,
+            which: 32,
+            code: "Space",
+        });
+        document.body.dispatchEvent(keyboardEvent);
+
+        //side width
+        $('.side').width($(window).width() * 0.06);
+
+        //fetch time
+        let dayNow = new Date();
+        let day = (dayNow.getDate() < 10 ? '0' : '') + dayNow.getDate();
+        let month = dayNow.getMonth();
+        let year = dayNow.getFullYear();
+
+        function time() {
+            let dayNow = new Date();
+            let day = (dayNow.getDate() < 10 ? '0' : '') + dayNow.getDate();
+            let month = dayNow.getMonth();
+            let year = dayNow.getFullYear();
+            let hour = (dayNow.getHours() < 10 ? '0' : '') + dayNow.getHours();
+            let minutes = (dayNow.getMinutes() < 10 ? '0' : '') + dayNow.getMinutes();
+            $('header .date .year').text(year);
+            $('header .date .month').text(month + 1);
+            $('header .date .day').text(day);
+            $('header .right .time').text(`${hour}:${minutes}`);
+        }
+        time();
+        window.setInterval((() => time()), 10000);
+
+        function GetAuthorizationHeader() {
+            const parameter = {
+                grant_type: "client_credentials",
+                client_id: "angela.yu-8b06f4da-3871-4788",
+                client_secret: "27f9fe9b-2b84-4eed-864a-c4a699a96be8"
+            };
+            let auth_url = "https://tdx.transportdata.tw/auth/realms/TDXConnect/protocol/openid-connect/token";
+            $.ajax({
+                type: "POST",
+                url: auth_url,
+                crossDomain: true,
+                dataType: 'JSON',
+                data: parameter,
+                async: false,
+                success: function (data) {
+                    let txt = JSON.stringify(data);
+                    $("#accesstoken").text(JSON.stringify(data));
+
+                },
+                error: function (xhr, textStatus, thrownError) { }
+            });
+        }
+
+        GetAuthorizationHeader();
+
+        //到站時間 30sec更新一次
+        let stopName = JSON.parse(localStorage.getItem("stopName"));
+        let busNum = JSON.parse(localStorage.getItem("number"));
+        let startName = JSON.parse(localStorage.getItem("startName"));
+        let endName = JSON.parse(localStorage.getItem("endName"));
+        let direction = JSON.parse(localStorage.getItem("direction"));
+
+        let accesstokenStr = $("#accesstoken").text();
+        let accesstoken = JSON.parse(accesstokenStr);
+
+
+        let cityName_Start;
+        let cityName_End;
+        let position = '';
+        let endPosition = '';
+        let cityNum_Start;
+        let cityNum_End;
+
+        //站名抓目前經緯＆終點經緯
+        if (accesstoken != undefined) {
+            $.ajax({
+                url: ' https://tdx.transportdata.tw/api/basic/v2/Bus/StopOfRoute/InterCity/' + busNum.name + '?%24format=JSON',
+                method: "GET",
+                headers: {
+                    "authorization": "Bearer " + accesstoken.access_token,
+                },
+                async: false,
+                success: function (address) {
+                    console.log(address);
+                    let num;
+                    let allStop = [];
+
+                    for (let i = 0; i < address.length; i++) {
+
+                        if (address[i].SubRouteName.Zh_tw == busNum.name) {
+
+                            for (let j = 0; j < address[i].Stops.length; j++) {
+                                // console.log(address[i].Stops[j].StopName.Zh_tw,stopName.name)
+                                if (address[i].Stops[j].StopName.Zh_tw == stopName.name) {
+                                    allStop.push(address[i].Stops[j]);
+                                }
+                            }
+
+                        }
+
+                    }
+
+
+                    let x = allStop[0].StopPosition.PositionLat;
+                    let y = allStop[0].StopPosition.PositionLon;
+                    position = x + ',' + y;
+
+                    console.log(position);
+
+                    //now position 目前經緯抓城市＆區域
+                    $.ajax({
+                        url: ' https://maps.googleapis.com/maps/api/geocode/json?latlng=' + position + '&key=AIzaSyB2bfttufUwqEYfpe5jLF83FnVAMBUATEc',
+                        method: "GET",
+                        datatype: "json",
+                        success: function (address) {
+                            if (address.results[0].address_components.slice(-4)[1].long_name == '台北市') {
+                                cityName_Start = '臺北市';
+                            } else {
+                                cityName_Start = address.results[0].address_components.slice(-4)[1].long_name; //縣市 
+                            }
+
+                            //google 經緯轉地址 若出現簡體字
+                            let area = address.results[0].address_components.slice(-4)[0].long_name;
+                            if (area.includes('区')) {
+                                $('.place.now').text(area.split('区')[0] + '區');//區域
+                                // console.log(area.split('区')[0]);
+                            } else {
+                                $('.place.now').text(address.results[0].address_components.slice(-4)[0].long_name);//區域
+                            }
+
+                            cityNum_Start = $('.place.now').text();//為了換區抓API，再把原區域找回
+                            weatherNow();//溫度、天氣
+                            console.log(address.results[0].address_components);
+                        }
+                    });
+
+                    //end position終點經緯抓城市＆區域
+                    $.ajax({
+                        url: ' https://maps.googleapis.com/maps/api/geocode/json?latlng=' + endPosition + '&key=AIzaSyB2bfttufUwqEYfpe5jLF83FnVAMBUATEc',
+                        method: "GET",
+                        datatype: "json",
+                        success: function (address) {
+                            if (address.results[0].address_components.slice(-4)[1].long_name == '台北市') {
+                                cityName_End = '臺北市';
+                            } else {
+                                cityName_End = address.results[0].address_components.slice(-4)[1].long_name; //縣市 
+                            }
+
+                            //google 經緯轉地址 若出現簡體字
+                            let area = address.results[0].address_components.slice(-4)[0].long_name;
+                            if (area.includes('区')) {
+                                $('.place.end').text(area.split('区')[0] + '區');//區域
+                                // console.log(area.split('区')[0]);
+                            } else {
+                                $('.place.end').text(address.results[0].address_components.slice(-4)[0].long_name);//區域
+                            }
+
+                            cityNum_End = $('.place.end').text();//為了換區抓API，再把原區域找回
+                            weatherEnd();//溫度、天氣
+                        }
+                    });
+                }
+            });
+
+        }
+
+
+        function fetchAPI() {
+            $('.flex.busNum').text(busNum.name);
+
+            if (accesstoken != undefined) {
+                $.ajax({
+                    type: "GET",
+                    url: 'https://tdx.transportdata.tw/api/basic/v2/Bus/EstimatedTimeOfArrival/InterCity/' + busNum.name + '?%24filter=Direction%20eq%20' + direction.direction + '&%24format=JSON',
+                    headers: {
+                        "authorization": "Bearer " + accesstoken.access_token,
+                    },
+                    async: false,
+                    success: function (returnData) {
+                        
+                        let newArray = returnData.filter(function (el) {
+                            return el.StopName.Zh_tw == stopName.name && el.PlateNumb !== '-1';
+                        });
+console.log(returnData);
+                        if (newArray.length > 0) {
+
+                            var lowest = Number.POSITIVE_INFINITY;
+                            var highest = Number.NEGATIVE_INFINITY;
+                            var Estimate;
+                            for (var i = newArray.length - 1; i >= 0; i--) {
+                                Estimate = newArray[i].EstimateTime;
+                                if (Estimate < lowest) {
+                                    lowest = Estimate;
+                                    $('.carNum .num').text(newArray[i].PlateNumb);
+                                    $('.carStatus').addClass('hasTime');
+                                    if (newArray[i].EstimateTime < 60) {
+                                        $('.carStatus').text("進站中").addClass('yellow');
+                                        $('.carStatus').removeClass('hasTime');
+                                    } else {
+                                        $('.carStatus').text(Math.floor(newArray[i].EstimateTime / 60));
+                                    }
+                                }
+                            }
+
+                        } else {
+
+                            $('.carNum').hide();
+                            $('.carStatus').removeClass('hasTime');
+
+                            $.ajax({//班表資料
+                                type: "GET",
+                                url: 'https://tdx.transportdata.tw/api/basic/v2/Bus/Schedule/InterCity/' + busNum.name,
+                                headers: {
+                                    "authorization": "Bearer " + accesstoken.access_token,
+                                },
+                                async: false,
+                                success: function (data) {
+                                    let allTime = [], uniqueTime = [];
+
+                                    // console.log('發車',data);
+                                    for (let i = 0; i < data[0].Timetables.length; i++) {
+                                        allTime.push(data[0].Timetables[i].StopTimes[0].ArrivalTime);
+                                    }
+                                    //uniqueTime＝所有time
+                                    $.each(allTime, function (i, el) {
+                                        if ($.inArray(el, uniqueTime) === -1) uniqueTime.push(el);
+                                    });
+                                    //時間早到晚
+                                    uniqueTime.sort();
+                                    //抓最近的發車時間
+                                    for (let i = 0; i < uniqueTime.length; i++) {
+                                        if (uniqueTime[i] > $('.time').text()) {
+                                            $('.carStatus').text(uniqueTime[i] + '發車');
+                                            break;
+                                        }
+                                    }
+
+                                },
+                                error: function (xhr, textStatus, thrownError) { }
+                            });
+                        }
+                    },
+                    error: function (xhr, textStatus, thrownError) {
+                        console.log('errorStatus:', textStatus);
+                        console.log('Error:', thrownError);
+                    }
+                });
+            }
+        }
+        fetchAPI();
+        window.setInterval((() => fetchAPI()), 60000);
+
+        //時間 color
+        function textColor() {
+            if ($('.carStatus').text() == '進站中') {
+                $('.carStatus').addClass('yellow');
+            } else {
+                $('.carStatus').removeClass('yellow');
+            }
+        }
+        window.setInterval((() => textColor()), 2000);
+
+        //now position 目前經緯抓城市＆區域
+        $.ajax({
+            url: ' https://maps.googleapis.com/maps/api/geocode/json?latlng=' + startName.position + '&key=AIzaSyB2bfttufUwqEYfpe5jLF83FnVAMBUATEc',
+            method: "GET",
+            datatype: "json",
+            success: function (address) {
+                // console.log('now position',address);
+                if (address.results[0].address_components.slice(-4)[1].long_name == '台北市') {
+                    cityName_Start = '臺北市';
+                } else {
+                    cityName_Start = address.results[0].address_components.slice(-4)[1].long_name; //縣市 
+                }
+
+                //google 經緯轉地址 若出現簡體字
+                let area = address.results[0].address_components.slice(-4)[0].long_name;
+                if (area.includes('区')) {
+                    $('.place.now').text(area.split('区')[0] + '區');//區域
+                    // console.log(area.split('区')[0]);
+                } else {
+                    $('.place.now').text(address.results[0].address_components.slice(-4)[0].long_name);//區域
+                }
+
+                cityNum_Start = $('.place.now').text();//為了換區抓API，再把原區域找回
+                weatherNow();//溫度、天氣
+                console.log(address.results[0].address_components);
+            },
+            error: function (xhr, textStatus, thrownError) {
+                console.log('errorStatus:', textStatus);
+                console.log('Error:', thrownError);
+            }
+        });
+
+        //end position 終點經緯抓城市＆區域
+        $.ajax({
+            url: ' https://maps.googleapis.com/maps/api/geocode/json?latlng=' + endName.position + '&key=AIzaSyB2bfttufUwqEYfpe5jLF83FnVAMBUATEc',
+            method: "GET",
+            datatype: "json",
+            success: function (address) {
+                // console.log('end position',address);
+                if (address.results[0].address_components.slice(-4)[1].long_name == '台北市') {
+                    cityName_End = '臺北市';
+                } else {
+                    cityName_End = address.results[0].address_components.slice(-4)[1].long_name; //縣市 
+                }
+
+                //google 經緯轉地址 若出現簡體字
+                let area = address.results[0].address_components.slice(-4)[0].long_name;
+                if (area.includes('区')) {
+                    $('.place.end').text(area.split('区')[0] + '區');//區域
+                    // console.log(area.split('区')[0]);
+                } else {
+                    $('.place.end').text(address.results[0].address_components.slice(-4)[0].long_name);//區域
+                }
+
+                cityNum_End = $('.place.end').text();//為了換區抓API，再把原區域找回
+                weatherEnd();//溫度、天氣
+
+            },
+            error: function (xhr, textStatus, thrownError) {
+                console.log('errorStatus:', textStatus);
+                console.log('Error:', thrownError);
+            }
+        });
+
+
+
+        function img(weather, place) {
+            let str = String(weather);
+
+            if (str.includes("陰") || str.includes("雲")) {
+                if (place == 'now') {
+                    $('.img.now').attr('src', 'img/cloudy.svg');
+                } else {
+                    $('.img.end').attr('src', 'img/cloudy.svg');
+                }
+            } else if (str.includes("雨")) {
+                if (place == 'now') {
+                    $('.img.now').attr('src', 'img/rain.svg');
+                } else {
+                    $('.img.end').attr('src', 'img/rain.svg');
+                }
+            } else if (str.includes("晴")) {
+                if (place == 'now') {
+                    $('.img.now').attr('src', 'img/sunny.svg');
+                } else {
+                    $('.img.end').attr('src', 'img/sunny.svg');
+                }
+            }
+        }
+
+        function weatherNow() {
+
+            $.ajax({
+                url: 'https://opendata.cwa.gov.tw/api/v1/rest/datastore/O-A0003-001?Authorization=CWA-A16A8435-9F9B-413E-89BB-46E3491BB52C',//A0003
+                method: "GET",
+                datatype: "json",
+                success: function (res) {
+
+                    let number;
+
+                    if (cityName_Start == '臺北市' && $('.place.now').text() == '大同區' ||
+                        cityName_Start == '臺北市' && $('.place.now').text() == '萬華區') {
+                        $('.place.now').text('中正區');
+                    } else if (cityName_Start == '臺北市' && $('.place.now').text() == '中山區') {
+                        $('.place.now').text('松山區');
+                    } else if (cityName_Start == '新北市' && $('.place.now').text() == '泰山區') {
+                        $('.place.now').text('新莊區');
+                    } else if (cityName_Start == '基隆市' && $('.place.now').text() == '信義區') {
+                        $('.place.now').text('中正區');
+                    }
+
+
+                    for (let i = 0; i < res.records.Station.length; i++) {
+                        if (res.records.Station[i].GeoInfo.CountyName == cityName_Start &&
+                            res.records.Station[i].GeoInfo.TownName == $('.place.now').text()) {
+                            number = i;
+                        }
+                    }
+
+                    if (number != undefined) {
+
+                        $('.temperature.now').text(Math.round(res.records.Station[number].WeatherElement.AirTemperature));//AirTemperature
+                        img(res.records.Station[number].WeatherElement.Weather, 'now');//img
+                        console.log(res.records.Station[number].WeatherElement.Weather);
+                        $('.place.now').text(cityNum_Start);
+
+                    } else {
+                        startOtherAPI();
+                    }
+
+                },
+                error: function (xhr, textStatus, thrownError) {
+                    console.log('errorStatus:', textStatus);
+                    console.log('Error:', thrownError);
+                }
+            });
+
+
+            function startOtherAPI() {
+
+                $.ajax({
+                    url: 'https://opendata.cwa.gov.tw/api/v1/rest/datastore/O-A0001-001?Authorization=CWA-A16A8435-9F9B-413E-89BB-46E3491BB52C',//A0001
+                    method: "GET",
+                    datatype: "json",
+                    success: function (res) {
+                        for (let i = 0; i < res.records.Station.length; i++) {
+                            if (res.records.Station[i].GeoInfo.CountyName == cityName_Start &&
+                                res.records.Station[i].GeoInfo.TownName == $('.place.now').text()) {
+                                $('.temperature.now').text(Math.round(res.records.Station[i].WeatherElement.AirTemperature));//AirTemperature
+                                img(res.records.Station[i].WeatherElement.Weather, 'now');//img
+                                console.log(res.records.Station[i].WeatherElement.Weather, res.records.Station[i].WeatherElement.AirTemperature);
+                                $('.place.now').text(cityNum_Start);
+                            }
+                        }
+                    }
+                });
+            }
+
+        }
+
+
+        function weatherEnd() {
+            $.ajax({
+                url: 'https://opendata.cwa.gov.tw/api/v1/rest/datastore/O-A0003-001?Authorization=CWA-A16A8435-9F9B-413E-89BB-46E3491BB52C',//A0003
+                method: "GET",
+                datatype: "json",
+                success: function (res) {
+                    let number;
+
+                    if (cityName_End == '臺北市' && $('.place.end').text() == '大同區' ||
+                        cityName_End == '臺北市' && $('.place.end').text() == '萬華區') {
+                        $('.place.end').text('中正區');
+                    } else if (cityName_End == '臺北市' && $('.place.end').text() == '中山區') {
+                        $('.place.end').text('松山區');
+                    } else if (cityName_End == '新北市' && $('.place.end').text() == '泰山區') {
+                        $('.place.end').text('新莊區');
+                    } else if (cityName_End == '基隆市' && $('.place.end').text() == '信義區') {
+                        $('.place.end').text('中正區');
+                    }
+
+                    for (let i = 0; i < res.records.Station.length; i++) {
+                        if (res.records.Station[i].GeoInfo.CountyName == cityName_End &&
+                            res.records.Station[i].GeoInfo.TownName == $('.place.end').text()) {
+                            number = i;
+                        }
+                    }
+                    console.log(cityNum_End);
+
+                    if (number != undefined) {
+                        $('.temperature.end').text(Math.round(res.records.Station[number].WeatherElement.AirTemperature));//AirTemperature
+                        img(res.records.Station[number].WeatherElement.Weather, 'end');//img
+                        console.log(res.records.Station[number].WeatherElement.Weather);
+                        $('.place.end').text(cityNum_End);
+                        return
+                    } else {
+                        endOtherAPI();
+                        return
+                    }
+
+                },
+                error: function (xhr, textStatus, thrownError) {
+                    console.log('errorStatus:', textStatus);
+                    console.log('Error:', thrownError);
+                }
+            });
+
+
+            function endOtherAPI() {
+                $.ajax({
+                    url: 'https://opendata.cwa.gov.tw/api/v1/rest/datastore/O-A0001-001?Authorization=CWA-A16A8435-9F9B-413E-89BB-46E3491BB52C',//A0001
+                    method: "GET",
+                    datatype: "json",
+                    success: function (res) {
+                        for (let i = 0; i < res.records.Station.length; i++) {
+
+                            if (res.records.Station[i].GeoInfo.CountyName == cityName_End &&
+                                res.records.Station[i].GeoInfo.TownName == $('.place.end').text()) {
+                                console.log('A0001 end', res.records.Station[i]);
+                                $('.temperature.end').text(Math.round(res.records.Station[i].WeatherElement.AirTemperature));//AirTemperature
+                                img(res.records.Station[i].WeatherElement.Weather, 'end');//img
+                                $('.place.end').text(cityNum_End);
+                                return
+                            }
+                        }
+
+                    },
+                    error: function (xhr, textStatus, thrownError) {
+                        console.log('errorStatus:', textStatus);
+                        console.log('Error:', thrownError);
+                    }
+                });
+            }
+        }
+
+
+    </script>
+</body>
+
+</html>

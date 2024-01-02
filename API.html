@@ -39,8 +39,8 @@
                         <img src="" alt="" class="img now">
                     </div>
                     <div class="down">
-                        <div class="air">空汙</div>
-                        <div class="text">53</div>
+                        <div class="air">空氣</div>
+                        <div class="text now"><img src="img/nosmile_white.svg" alt="" ></div>
                     </div>
                 </div>
                 <div class="place now"></div>
@@ -52,8 +52,8 @@
                         <img src="" alt="" class="img end">
                     </div>
                     <div class="down">
-                        <div class="air">空汙</div>
-                        <div class="text">51</div>
+                        <div class="air">空氣</div>
+                        <div class="text end"><img src="img/nosmile_white.svg" alt="" ></div>
                     </div>
                 </div>
                 <div class="place end"></div>
@@ -116,12 +116,13 @@
         function time() {
             let dayNow = new Date();
             let day = (dayNow.getDate() < 10 ? '0' : '') + dayNow.getDate();
-            let month = dayNow.getMonth();
+            let month = dayNow.getMonth() + 1;
             let year = dayNow.getFullYear();
             let hour = (dayNow.getHours() < 10 ? '0' : '') + dayNow.getHours();
             let minutes = (dayNow.getMinutes() < 10 ? '0' : '') + dayNow.getMinutes();
+
             $('header .date .year').text(year);
-            $('header .date .month').text(month + 1);
+            $('header .date .month').text(month < 10 ? '0' + month : month);
             $('header .date .day').text(day);
             $('header .right .time').text(`${hour}:${minutes}`);
         }
@@ -181,7 +182,7 @@
                 },
                 async: false,
                 success: function (address) {
-                    console.log(address);
+                    console.log('指定路線的各站資訊', address);
                     let num;
                     let allStop = [];
 
@@ -205,9 +206,7 @@
                     let y = allStop[0].StopPosition.PositionLon;
                     position = x + ',' + y;
 
-                    console.log(position);
-
-                    //now position 目前經緯抓城市＆區域
+                    //now position 站名經緯抓城市＆區域
                     $.ajax({
                         url: ' https://maps.googleapis.com/maps/api/geocode/json?latlng=' + position + '&key=AIzaSyB2bfttufUwqEYfpe5jLF83FnVAMBUATEc',
                         method: "GET",
@@ -230,11 +229,11 @@
 
                             cityNum_Start = $('.place.now').text();//為了換區抓API，再把原區域找回
                             weatherNow();//溫度、天氣
-                            console.log(address.results[0].address_components);
+                            console.log('站名的地址', address.results[0].address_components);
                         }
                     });
 
-                    //end position終點經緯抓城市＆區域
+                    //end position 終點經緯抓城市＆區域
                     $.ajax({
                         url: ' https://maps.googleapis.com/maps/api/geocode/json?latlng=' + endPosition + '&key=AIzaSyB2bfttufUwqEYfpe5jLF83FnVAMBUATEc',
                         method: "GET",
@@ -259,6 +258,81 @@
                             weatherEnd();//溫度、天氣
                         }
                     });
+
+                    //AQI start
+                    $.ajax({
+                        url: ' https://data.moenv.gov.tw/api/v2/aqx_p_133?api_key=339436ec-354d-4298-8b8c-1bd974777345',
+                        method: "GET",
+                        datatype: "json",
+                        success: function (address) {
+                            console.log('AQI', address);
+                            let dayNow = new Date();
+                            let hour = dayNow.getHours();
+                            let eachPM2_S = [], eachPM2_E = [];
+                            let PM2_S = address.records.filter(function (el) {
+                                return el.itemengname == 'PM2.5' && el.county == cityName_Start;
+                            });
+                            let PM2_E = address.records.filter(function (el) {
+                                return el.itemengname == 'PM2.5' && el.county == cityName_End;
+                            });
+
+                            //now所有PM2.5
+                            $.each(PM2_S, function (i, el) {
+                                if ($.inArray(el, eachPM2_S) === -1) eachPM2_S.push(el.concentration);
+                            });
+                            $.each(PM2_E, function (i, el) {
+                                if ($.inArray(el, eachPM2_E) === -1) eachPM2_E.push(el.concentration);
+                            });
+                            //now PM2.5排序 
+                            eachPM2_S.sort();
+                            eachPM2_E.sort();
+
+                            let startAir,endAir;
+                            if (eachPM2_S[eachPM2_S.length - 1] != 'x') {
+                                $('.content .down .text.now img').remove();
+                                if(parseInt(eachPM2_S[eachPM2_S.length - 1]) < 15.4){
+                                    $('.content .down .text.now').append('<img src="img/smile_white.svg" alt="" class="img now">');
+                                }else if(15.4< parseInt(eachPM2_S[eachPM2_S.length - 1]) < 35.5){
+                                    $('.content .down .text.now').append('<img src="img/nosmile_white.svg" alt="" class="img now">');
+                                }else if(35.4<parseInt(eachPM2_S[eachPM2_S.length - 1])<54.5){
+                                    $('.content .down .text.now').append('<img src="img/sad_white.svg" alt="" class="img now">');
+                                }
+                            } else {
+                                $('.content .down .text.now img').remove();
+                                if(parseInt(eachPM2_S[eachPM2_S.length - 2]) < 15.4){
+                                    $('.content .down .text.now').append('<img src="img/smile_white.svg" alt="" class="img now">');
+                                }else if(15.4< parseInt(eachPM2_S[eachPM2_S.length - 2]) < 35.5){
+                                    $('.content .down .text.now').append('<img src="img/nosmile_white.svg" alt="" class="img now">');
+                                }else if(35.4<parseInt(eachPM2_S[eachPM2_S.length - 2])<54.5){
+                                    $('.content .down .text.now').append('<img src="img/sad_white.svg" alt="" class="img now">');
+                                }
+                            }
+                            if (eachPM2_E[eachPM2_E.length - 1] != 'x') {
+                                $('.content .down .text.end img').remove();
+                                if(parseInt(eachPM2_E[eachPM2_E.length - 1]) < 15.4){
+                                    $('.content .down .text.end').append('<img src="img/smile_white.svg" alt="" class="img now">');
+                                }else if(15.4< parseInt(eachPM2_E[eachPM2_E.length - 1]) < 35.5){
+                                    $('.content .down .text.end').append('<img src="img/nosmile_white.svg" alt="" class="img now">');
+                                }else if(35.4<parseInt(eachPM2_E[eachPM2_E.length - 1])<54.5){
+                                    $('.content .down .text.end').append('<img src="img/sad_white.svg" alt="" class="img now">');
+                                }
+                            } else {
+                                $('.content .down .text.end img').remove();
+                                if(parseInt(eachPM2_E[eachPM2_E.length - 2]) < 15.4){
+                                    $('.content .down .text.end').append('<img src="img/smile_white.svg" alt="" class="img now">');
+                                }else if(15.4< parseInt(eachPM2_E[eachPM2_E.length - 2]) < 35.5){
+                                    $('.content .down .text.end').append('<img src="img/nosmile_white.svg" alt="" class="img now">');
+                                }else if(35.4<parseInt(eachPM2_E[eachPM2_E.length - 2])<54.5){
+                                    $('.content .down .text.end').append('<img src="img/sad_white.svg" alt="" class="img now">');
+                                }
+                            }
+                            console.log(cityNum_End);
+                        },
+                        error: function (xhr, textStatus, thrownError) {
+                            console.log('errorStatus:', textStatus);
+                            console.log('Error:', thrownError);
+                        }
+                    });
                 }
             });
 
@@ -277,11 +351,11 @@
                     },
                     async: false,
                     success: function (returnData) {
-                        
+                        console.log('指定車號&指定去回程的資訊', returnData);
                         let newArray = returnData.filter(function (el) {
                             return el.StopName.Zh_tw == stopName.name && el.PlateNumb !== '-1';
                         });
-console.log(returnData);
+
                         if (newArray.length > 0) {
 
                             var lowest = Number.POSITIVE_INFINITY;
@@ -360,11 +434,12 @@ console.log(returnData);
         }
         window.setInterval((() => textColor()), 2000);
 
-        //now position 目前經緯抓城市＆區域
+        //now position 起點經緯抓城市＆區域
         $.ajax({
             url: ' https://maps.googleapis.com/maps/api/geocode/json?latlng=' + startName.position + '&key=AIzaSyB2bfttufUwqEYfpe5jLF83FnVAMBUATEc',
             method: "GET",
             datatype: "json",
+            async: false,
             success: function (address) {
                 // console.log('now position',address);
                 if (address.results[0].address_components.slice(-4)[1].long_name == '台北市') {
@@ -384,7 +459,7 @@ console.log(returnData);
 
                 cityNum_Start = $('.place.now').text();//為了換區抓API，再把原區域找回
                 weatherNow();//溫度、天氣
-                console.log(address.results[0].address_components);
+                console.log('起點', address.results[0].address_components);
             },
             error: function (xhr, textStatus, thrownError) {
                 console.log('errorStatus:', textStatus);
@@ -397,6 +472,7 @@ console.log(returnData);
             url: ' https://maps.googleapis.com/maps/api/geocode/json?latlng=' + endName.position + '&key=AIzaSyB2bfttufUwqEYfpe5jLF83FnVAMBUATEc',
             method: "GET",
             datatype: "json",
+            async: false,
             success: function (address) {
                 // console.log('end position',address);
                 if (address.results[0].address_components.slice(-4)[1].long_name == '台北市') {
@@ -483,7 +559,7 @@ console.log(returnData);
 
                         $('.temperature.now').text(Math.round(res.records.Station[number].WeatherElement.AirTemperature));//AirTemperature
                         img(res.records.Station[number].WeatherElement.Weather, 'now');//img
-                        console.log(res.records.Station[number].WeatherElement.Weather);
+                        console.log(res.records.Station[number]);
                         $('.place.now').text(cityNum_Start);
 
                     } else {
